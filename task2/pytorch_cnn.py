@@ -7,22 +7,22 @@ import torch
 from torch import nn
 from torch import optim
 from torch.nn.modules import activation
-from qlib.qlib.contrib.model.pytorch_utils import count_parameters
-from qlib.qlib.data.dataset import DatasetH
-from qlib.qlib.data.dataset.handler import DataHandlerLP
-from qlib.qlib.log import get_module_logger
-from qlib.qlib.model.base import Model
-from qlib.qlib.utils import get_or_create_path, save_multiple_parts_file, unpack_archive_with_buffer
+from qlib.contrib.model.pytorch_utils import count_parameters
+from qlib.data.dataset import DatasetH
+from qlib.data.dataset.handler import DataHandlerLP
+from qlib.log import get_module_logger
+from qlib.model.base import Model
+from qlib.utils import get_or_create_path, save_multiple_parts_file, unpack_archive_with_buffer
 from sklearn.metrics import roc_auc_score, mean_squared_error
-from qlib.qlib.workflow import R
+from qlib.workflow import R
 
 # reference to qlib/qlib/contrib/pytorch_nn.py
-class CNNPytorch(Model):
+class CNNModelPytorch(Model):
     def __init__(
         self,
         input_dim=360,
         output_dim=1,
-        layers=(256,),
+        layers=(256, 512, 768, 512, 256, 128, 64),
         lr=0.001,
         max_steps=300,
         batch_size=2000,
@@ -141,8 +141,8 @@ class CNNPytorch(Model):
         df_train, df_valid = dataset.prepare(
             ["train", "valid"], col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
         )
-        x_train, y_train = df_train["feature"], df_train["label"]
-        x_valid, y_valid = df_valid["feature"], df_valid["label"]
+        x_train, y_train = df_train.__getitem__('feature'), df_train.__getitem__('label')
+        x_valid, y_valid = df_valid.__getitem__('feature'), df_valid.__getitem__('label')
         try:
             wdf_train, wdf_valid = dataset.prepare(["train", "valid"], col_set=["weight"], data_key=DataHandlerLP.DK_L)
             w_train, w_valid = wdf_train["weight"], wdf_valid["weight"]
@@ -297,8 +297,8 @@ class Net(nn.Module):
         drop_input = nn.Dropout(0.05)
         cnn_layers.append(drop_input)
         for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
-            conv = nn.Conv1d(input_channel, output_channel)
-            activation = nn.ReLU(negative_slope=0.1, inplace=False)
+            conv = nn.Conv1d(input_channel, output_channel, 3)
+            activation = nn.ReLU(inplace=False)
             pool = nn.MaxPool1d(2)
             seq = nn.Sequential(conv, activation, pool)
             cnn_layers.append(seq)
