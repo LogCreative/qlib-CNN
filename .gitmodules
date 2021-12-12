@@ -1,3 +1,6 @@
 [submodule "qlib"]
 	path = qlib
 	url = git@github.com:microsoft/qlib.git
+[submodule "img/PlotNeuralNet"]
+	path = img/PlotNeuralNet
+	url = git@github.com:HarisIqbal88/PlotNeuralNet.git
