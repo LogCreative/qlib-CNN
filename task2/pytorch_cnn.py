@@ -22,7 +22,7 @@ class CNNModelPytorch(Model):
         self,
         input_dim=360,
         output_dim=1,
-        layers=(64,32,16),
+        layers=(16,),
         lr=0.001,
         max_steps=300,
         batch_size=2000,
