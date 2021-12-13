@@ -22,7 +22,7 @@ class CNNModelPytorch(Model):
         self,
         input_dim=360,
         output_dim=1,
-        layers=(256, 512, 768, 512, 256, 128, 64),
+        layers=(128, 64, 32),
         lr=0.001,
         max_steps=300,
         batch_size=2000,
@@ -296,8 +296,6 @@ class Net(nn.Module):
         super(Net, self).__init__()
         layers = [input_dim] + list(layers)
         cnn_layers = []
-        drop_input = nn.Dropout(0.05)
-        cnn_layers.append(drop_input)
         for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
             conv = nn.Conv1d(input_channel, output_channel, 3)
             activation = nn.ReLU(inplace=False)
@@ -313,7 +311,7 @@ class Net(nn.Module):
         self.cnn_layers = nn.ModuleList(cnn_layers)
 
     def forward(self, x):
-        cur_output = x
+        cur_output = x.unsqueeze(2)
         for i, now_layer in enumerate(self.cnn_layers):
             cur_output = now_layer(cur_output)
         return cur_output
