@@ -1,12 +1,14 @@
 import os
 from typing import Text, Union
 
+import copy
 import numpy as np
 import pandas as pd
 import torch
 from torch import nn
 from torch import optim
 from torch.nn.modules import activation
+from torch.utils.data import DataLoader
 from qlib.contrib.model.pytorch_utils import count_parameters
 from qlib.data.dataset import DatasetH
 from qlib.data.dataset.handler import DataHandlerLP
@@ -20,21 +22,21 @@ from qlib.workflow import R
 class CNNModelPytorch(Model):
     def __init__(
         self,
-        input_dim=360,
-        output_dim=1,
-        layers=(16,),
+        d_feat=6,
+        n_chans=128,
+        kernel_size=5,
+        num_layers=2,
+        dropout=0.0,
+        n_epochs=200,
         lr=0.001,
-        max_steps=300,
+        metric="",
         batch_size=2000,
-        early_stop_rounds=50,
-        eval_steps=20,
-        lr_decay=0.96,
-        lr_decay_steps=100,
-        optimizer="gd",
+        early_stop=20,
         loss="mse",
+        optimizer="adam",
+        n_jobs=10,
         GPU=0,
         seed=None,
-        weight_decay=0.0,
         **kwargs
     ):
         # Set logger.
@@ -42,52 +44,56 @@ class CNNModelPytorch(Model):
         self.logger.info("CNN pytorch version...")
 
         # set hyper-parameters.
-        self.layers = layers
+        self.d_feat = d_feat
+        self.n_chans = n_chans
+        self.kernel_size = kernel_size
+        self.num_layers = num_layers
+        self.dropout = dropout
+        self.n_epochs = n_epochs
         self.lr = lr
-        self.max_steps = max_steps
+        self.metric = metric
         self.batch_size = batch_size
-        self.early_stop_rounds = early_stop_rounds
-        self.eval_steps = eval_steps
-        self.lr_decay = lr_decay
-        self.lr_decay_steps = lr_decay_steps
+        self.early_stop = early_stop
         self.optimizer = optimizer.lower()
-        self.loss_type = loss
+        self.loss = loss
         self.device = torch.device("cuda:%d" % (GPU) if torch.cuda.is_available() and GPU >= 0 else "cpu")
+        self.n_jobs = n_jobs
         self.seed = seed
-        self.weight_decay = weight_decay
 
         self.logger.info(
             "CNN parameters setting:"
-            "\nlayers : {}"
+            "\nd_feat : {}"
+            "\nn_chans : {}"
+            "\nkernel_size : {}"
+            "\nnum_layers : {}"
+            "\ndropout : {}"
+            "\nn_epochs : {}"
             "\nlr : {}"
-            "\nmax_steps : {}"
+            "\nmetric : {}"
             "\nbatch_size : {}"
-            "\nearly_stop_rounds : {}"
-            "\neval_steps : {}"
-            "\nlr_decay : {}"
-            "\nlr_decay_steps : {}"
+            "\nearly_stop : {}"
             "\noptimizer : {}"
             "\nloss_type : {}"
-            "\neval_steps : {}"
-            "\nseed : {}"
             "\ndevice : {}"
+            "\nn_jobs : {}"
             "\nuse_GPU : {}"
-            "\nweight_decay : {}".format(
-                layers,
+            "\nseed : {}".format(
+                d_feat,
+                n_chans,
+                kernel_size,
+                num_layers,
+                dropout,
+                n_epochs,
                 lr,
-                max_steps,
+                metric,
                 batch_size,
-                early_stop_rounds,
-                eval_steps,
-                lr_decay,
-                lr_decay_steps,
-                optimizer,
+                early_stop,
+                optimizer.lower(),
                 loss,
-                eval_steps,
-                seed,
                 self.device,
+                n_jobs,
                 self.use_gpu,
-                weight_decay,
+                seed,
             )
         )
 
@@ -95,202 +101,173 @@ class CNNModelPytorch(Model):
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
-        if loss not in {"mse", "binary"}:
-            raise NotImplementedError("loss {} is not supported!".format(loss))
-        self._scorer = mean_squared_error if loss == "mse" else roc_auc_score
-
-        self.cnn_model = Net(input_dim, output_dim, layers)
-        self.logger.info("model:\n{:}".format(self.cnn_model))
-        self.logger.info("model size: {:.4f} MB".format(count_parameters(self.cnn_model)))
+        self.CNN_model = Net(
+            num_input=self.d_feat,
+            output_size=1,
+            num_channels=[self.n_chans] * self.num_layers,
+            kernel_size=self.kernel_size,
+            dropout=self.dropout,
+        )
+        self.logger.info("model:\n{:}".format(self.CNN_model))
+        self.logger.info("model size: {:.4f} MB".format(count_parameters(self.CNN_model)))
 
         if optimizer.lower() == "adam":
-            self.train_optimizer = optim.Adam(self.cnn_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+            self.train_optimizer = optim.Adam(self.CNN_model.parameters(), lr=self.lr)
         elif optimizer.lower() == "gd":
-            self.train_optimizer = optim.SGD(self.cnn_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+            self.train_optimizer = optim.SGD(self.CNN_model.parameters(), lr=self.lr)
         else:
             raise NotImplementedError("optimizer {} is not supported!".format(optimizer))
 
-        # Reduce learning rate when loss has stopped decrease
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.train_optimizer,
-            mode="min",
-            factor=0.5,
-            patience=10,
-            verbose=True,
-            threshold=0.0001,
-            threshold_mode="rel",
-            cooldown=0,
-            min_lr=0.00001,
-            eps=1e-08,
-        )
-
         self.fitted = False
-        self.cnn_model.to(self.device)
+        self.CNN_model.to(self.device)
 
     @property
     def use_gpu(self):
         return self.device != torch.device("cpu")
 
+    def mse(self, pred, label):
+        loss = (pred - label) ** 2
+        return torch.mean(loss)
+
+    def loss_fn(self, pred, label):
+        mask = ~torch.isnan(label)
+
+        if self.loss == "mse":
+            return self.mse(pred[mask], label[mask])
+
+        raise ValueError("unknown loss `%s`" % self.loss)
+
+    def metric_fn(self, pred, label):
+
+        mask = torch.isfinite(label)
+
+        if self.metric == "" or self.metric == "loss":
+            return -self.loss_fn(pred[mask], label[mask])
+
+        raise ValueError("unknown metric `%s`" % self.metric)
+
+    def train_epoch(self, data_loader):
+
+        self.CNN_model.train()
+
+        for data in data_loader:
+            feature = data[:, :, 0:-1].to(self.device)
+            label = data[:, -1, -1].to(self.device)
+
+            pred = self.CNN_model(feature.float())
+            loss = self.loss_fn(pred, label)
+
+            self.train_optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_value_(self.CNN_model.parameters(), 3.0)
+            self.train_optimizer.step()
+
+    def test_epoch(self, data_loader):
+
+        self.CNN_model.eval()
+
+        scores = []
+        losses = []
+
+        for data in data_loader:
+
+            feature = data[:, :, 0:-1].to(self.device)
+            # feature[torch.isnan(feature)] = 0
+            label = data[:, -1, -1].to(self.device)
+
+            with torch.no_grad():
+                pred = self.CNN_model(feature.float())
+                loss = self.loss_fn(pred, label)
+                losses.append(loss.item())
+
+                score = self.metric_fn(pred, label)
+                scores.append(score.item())
+
+        return np.mean(losses), np.mean(scores)
+
     def fit(
         self,
-        dataset: DatasetH,
+        dataset,
         evals_result=dict(),
-        verbose=True,
         save_path=None,
     ):
-        df_train, df_valid = dataset.prepare(
-            ["train", "valid"], col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        dl_train = dataset.prepare("train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L)
+        dl_valid = dataset.prepare("valid", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L)
+
+        # process nan brought by dataloader
+        dl_train.config(fillna_type="ffill+bfill")
+        # process nan brought by dataloader
+        dl_valid.config(fillna_type="ffill+bfill")
+
+        train_loader = DataLoader(
+            dl_train, batch_size=self.batch_size, shuffle=True, num_workers=self.n_jobs, drop_last=True
         )
-        if df_train.empty or df_valid.empty:
-            raise ValueError("Empty data from dataset, please check your dataset config.")
-        x_train, y_train = df_train['feature'], df_train['label']
-        x_valid, y_valid = df_valid['feature'], df_valid['label']
-        try:
-            wdf_train, wdf_valid = dataset.prepare(["train", "valid"], col_set=["weight"], data_key=DataHandlerLP.DK_L)
-            w_train, w_valid = wdf_train["weight"], wdf_valid["weight"]
-        except KeyError as e:
-            w_train = pd.DataFrame(np.ones_like(y_train.values), index=y_train.index)
-            w_valid = pd.DataFrame(np.ones_like(y_valid.values), index=y_valid.index)
+        valid_loader = DataLoader(
+            dl_valid, batch_size=self.batch_size, shuffle=False, num_workers=self.n_jobs, drop_last=True
+        )
 
         save_path = get_or_create_path(save_path)
+
         stop_steps = 0
         train_loss = 0
-        best_loss = np.inf
+        best_score = -np.inf
+        best_epoch = 0
         evals_result["train"] = []
         evals_result["valid"] = []
+
         # train
         self.logger.info("training...")
         self.fitted = True
-        # return
-        # prepare training data
-        x_train_values = torch.from_numpy(x_train.values).float()
-        y_train_values = torch.from_numpy(y_train.values).float()
-        w_train_values = torch.from_numpy(w_train.values).float()
-        train_num = y_train_values.shape[0]
-        # prepare validation data
-        x_val_auto = torch.from_numpy(x_valid.values).float().to(self.device)
-        y_val_auto = torch.from_numpy(y_valid.values).float().to(self.device)
-        w_val_auto = torch.from_numpy(w_valid.values).float().to(self.device)
 
-        for step in range(self.max_steps):
-            if stop_steps >= self.early_stop_rounds:
-                if verbose:
-                    self.logger.info("\tearly stop")
-                break
-            loss = AverageMeter()
-            self.cnn_model.train()
-            self.train_optimizer.zero_grad()
-            choice = np.random.choice(train_num, self.batch_size)
-            x_batch_auto = x_train_values[choice].to(self.device)
-            y_batch_auto = y_train_values[choice].to(self.device)
-            w_batch_auto = w_train_values[choice].to(self.device)
+        for step in range(self.n_epochs):
+            self.logger.info("Epoch%d:", step)
+            self.logger.info("training...")
+            self.train_epoch(train_loader)
+            self.logger.info("evaluating...")
+            train_loss, train_score = self.test_epoch(train_loader)
+            val_loss, val_score = self.test_epoch(valid_loader)
+            self.logger.info("train %.6f, valid %.6f" % (train_score, val_score))
+            evals_result["train"].append(train_score)
+            evals_result["valid"].append(val_score)
 
-            # forward
-            preds = self.cnn_model(x_batch_auto)
-            cur_loss = self.get_loss(preds, w_batch_auto, y_batch_auto, self.loss_type)
-            cur_loss.backward()
-            self.train_optimizer.step()
-            loss.update(cur_loss.item())
-            R.log_metrics(train_loss=loss.avg, step=step)
-
-            # validation
-            train_loss += loss.val
-            # for evert `eval_steps` steps or at the last steps, we will evaluate the model.
-            if step % self.eval_steps == 0 or step + 1 == self.max_steps:
+            if val_score > best_score:
+                best_score = val_score
+                stop_steps = 0
+                best_epoch = step
+                best_param = copy.deepcopy(self.CNN_model.state_dict())
+            else:
                 stop_steps += 1
-                train_loss /= self.eval_steps
+                if stop_steps >= self.early_stop:
+                    self.logger.info("early stop")
+                    break
 
-                with torch.no_grad():
-                    self.cnn_model.eval()
-                    loss_val = AverageMeter()
+        self.logger.info("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.CNN_model.load_state_dict(best_param)
+        torch.save(best_param, save_path)
 
-                    # forward
-                    preds = self.cnn_model(x_val_auto)
-                    cur_loss_val = self.get_loss(preds, w_val_auto, y_val_auto, self.loss_type)
-                    loss_val.update(cur_loss_val.item())
-                R.log_metrics(val_loss=loss_val.val, step=step)
-                if verbose:
-                    self.logger.info(
-                        "[Epoch {}]: train_loss {:.6f}, valid_loss {:.6f}".format(step, train_loss, loss_val.val)
-                    )
-                evals_result["train"].append(train_loss)
-                evals_result["valid"].append(loss_val.val)
-                if loss_val.val < best_loss:
-                    if verbose:
-                        self.logger.info(
-                            "\tvalid loss update from {:.6f} to {:.6f}, save checkpoint.".format(
-                                best_loss, loss_val.val
-                            )
-                        )
-                    best_loss = loss_val.val
-                    stop_steps = 0
-                    torch.save(self.cnn_model.state_dict(), save_path)
-                train_loss = 0
-                # update learning rate
-                self.scheduler.step(cur_loss_val)
-
-        # restore the optimal parameters after training
-        self.cnn_model.load_state_dict(torch.load(save_path))
         if self.use_gpu:
             torch.cuda.empty_cache()
 
-    def get_loss(self, pred, w, target, loss_type):
-        if loss_type == "mse":
-            sqr_loss = torch.mul(pred - target, pred - target)
-            loss = torch.mul(sqr_loss, w).mean()
-            return loss
-        elif loss_type == "binary":
-            loss = nn.BCELoss(weight=w)
-            return loss(pred, target)
-        else:
-            raise NotImplementedError("loss {} is not supported!".format(loss_type))
-
-    def predict(self, dataset: DatasetH, segment: Union[Text, slice] = "test"):
+    def predict(self, dataset):
         if not self.fitted:
             raise ValueError("model is not fitted yet!")
-        x_test_pd = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
-        x_test = torch.from_numpy(x_test_pd.values).float().to(self.device)
-        self.cnn_model.eval()
-        with torch.no_grad():
-            preds = self.cnn_model(x_test).detach().cpu().numpy()
-        return pd.Series(np.squeeze(preds), index=x_test_pd.index)
 
-    def save(self, filename, **kwargs):
-        with save_multiple_parts_file(filename) as model_dir:
-            model_path = os.path.join(model_dir, os.path.split(model_dir)[-1])
-            # Save model
-            torch.save(self.cnn_model.state_dict(), model_path)
+        dl_test = dataset.prepare("test", col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
+        dl_test.config(fillna_type="ffill+bfill")
+        test_loader = DataLoader(dl_test, batch_size=self.batch_size, num_workers=self.n_jobs)
+        self.CNN_model.eval()
+        preds = []
 
-    def load(self, buffer, **kwargs):
-        with unpack_archive_with_buffer(buffer) as model_dir:
-            # Get model name
-            _model_name = os.path.splitext(list(filter(lambda x: x.startswith("model.bin"), os.listdir(model_dir)))[0])[
-                0
-            ]
-            _model_path = os.path.join(model_dir, _model_name)
-            # Load model
-            self.cnn_model.load_state_dict(torch.load(_model_path))
-        self.fitted = True
+        for data in test_loader:
 
+            feature = data[:, :, 0:-1].to(self.device)
 
-class AverageMeter:
-    """Computes and stores the average and current value"""
+            with torch.no_grad():
+                pred = self.CNN_model(feature.float()).detach().cpu().numpy()
 
-    def __init__(self):
-        self.reset()
+            preds.append(pred)
 
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
+        return pd.Series(np.concatenate(preds), index=dl_test.get_index())
 class Net(nn.Module):
     def __init__(self, input_dim, output_dim, layers=(256,)):
         super(Net, self).__init__()
