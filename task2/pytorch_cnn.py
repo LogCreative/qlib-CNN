@@ -302,7 +302,7 @@ class Net(nn.Module):
             pool = nn.MaxPool1d(2)
             seq = nn.Sequential(conv, activation, pool)
             cnn_layers.append(seq)
-        flat = nn.Flatten(output_channel, 1)
+        flat = nn.Flatten()
         cnn_layers.append(flat)
         drop_input = nn.Dropout(0.05)
         cnn_layers.append(drop_input)
@@ -311,7 +311,8 @@ class Net(nn.Module):
         self.cnn_layers = nn.ModuleList(cnn_layers)
 
     def forward(self, x):
-        cur_output = x.unsqueeze(2)
+        # [2000,20] -> batch_size, in_channels, length = [1,20,2000]
+        cur_output = x.transpose(0,1).unsqueeze(0)
         for i, now_layer in enumerate(self.cnn_layers):
             cur_output = now_layer(cur_output)
         return cur_output
