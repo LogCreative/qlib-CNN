@@ -59,8 +59,8 @@ port_analysis_config: &port_analysis_config
             min_cost: 5
 task:
     model:
-        class: DNNModelPytorch
-        module_path: qlib.contrib.model.pytorch_nn
+        class: CNNModelPytorch
+        module_path: qlib.contrib.model.pytorch_cnn
         kwargs:
             loss: mse
             input_dim: 157
@@ -70,9 +70,10 @@ task:
             lr_decay_steps: 100
             optimizer: adam
             max_steps: 8000
-            batch_size: 8192
+            batch_size: 8196
             GPU: 0
             weight_decay: 0.0002
+            loss_type: binary
     dataset:
         class: DatasetH
         module_path: qlib.data.dataset
@@ -88,9 +89,7 @@ task:
     record: 
         - class: SignalRecord
           module_path: qlib.workflow.record_temp
-          kwargs: 
-            model: <MODEL>
-            dataset: <DATASET>
+          kwargs: {}
         - class: SigAnaRecord
           module_path: qlib.workflow.record_temp
           kwargs: 
