@@ -59,7 +59,7 @@ task:
         kwargs: 
             GPU: 0
     dataset:
-        class: TSDatasetH
+        class: DatasetH
         module_path: qlib.data.dataset
         kwargs:
             handler:

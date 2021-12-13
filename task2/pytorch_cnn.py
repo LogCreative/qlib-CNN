@@ -141,8 +141,10 @@ class CNNModelPytorch(Model):
         df_train, df_valid = dataset.prepare(
             ["train", "valid"], col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
         )
-        x_train, y_train = df_train.__getitem__('feature'), df_train.__getitem__('label')
-        x_valid, y_valid = df_valid.__getitem__('feature'), df_valid.__getitem__('label')
+        if df_train.empty or df_valid.empty:
+            raise ValueError("Empty data from dataset, please check your dataset config.")
+        x_train, y_train = df_train['feature'], df_train['label']
+        x_valid, y_valid = df_valid['feature'], df_valid['label']
         try:
             wdf_train, wdf_valid = dataset.prepare(["train", "valid"], col_set=["weight"], data_key=DataHandlerLP.DK_L)
             w_train, w_valid = wdf_train["weight"], wdf_valid["weight"]
