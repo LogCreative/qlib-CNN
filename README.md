@@ -2,6 +2,8 @@
 
 ## 运行范例
 
+直接运行 [task1/workflow_by_code.py]，得到结果。
+
 ![](task1/pass.png)
 
 ## pytorch 实现 CNN
@@ -24,7 +26,7 @@ GTX 1050 Ti 的显存大小不足以运行该 CNN 模型代码，需要使用更
 
 ### 分析
 
-由于 TCN 已经被[实现](https://github.com/microsoft/qlib/blob/main/qlib/contrib/model/pytorch_tcn_ts.py)。由于本地算力不足，使用 Google Colab 运行之见 [代码](task3/workflow_tcn.ipynb)。
+TCN 已经被[实现](https://github.com/microsoft/qlib/blob/main/qlib/contrib/model/pytorch_tcn_ts.py)，参照对应的 [YAML 文件](task3/workflow_config_tcn_Alpha158.yaml)，将尝试直接运行该模型。由于本地算力不足，使用 Google Colab 运行之见 [代码](task3/workflow_tcn.ipynb)。
 
 > `TSDatasetSampler` 近期有 API 变动，需要手动进行数据转换（未见 Issue 更新）。
 
