@@ -2,7 +2,11 @@
 
 ## 运行范例
 
-直接运行 [task1/workflow_by_code.py]，得到结果。
+直接运行范例代码，得到结果。
+
+```
+python task1/workflow_by_code.py
+```
 
 ![](task1/pass.png)
 
