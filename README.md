@@ -24,4 +24,14 @@ GTX 1050 Ti 的显存大小不足以运行该 CNN 模型代码，需要使用更
 
 ### 分析
 
-由于 TCN 已经被[实现](https://github.com/microsoft/qlib/blob/main/qlib/contrib/model/pytorch_tcn_ts.py)。运行之见 [代码](workflow.ipynb)。
+由于 TCN 已经被[实现](https://github.com/microsoft/qlib/blob/main/qlib/contrib/model/pytorch_tcn_ts.py)。由于本地算力不足，使用 Google Colab 运行之见 [代码](workflow.ipynb)。
+
+> `TSDatasetSampler` 近期有 API 变动，需要手动进行数据转换（未见 Issue 更新）。
+
+![](img/report.png)
+
+![](img/return.png)
+
+![](img/scoreIC.png)
+
+![](img/IC.png)
