@@ -24,7 +24,7 @@ python task1/workflow_by_code.py
 ```cmd
 qrun task2/workflow.yaml
 ```
-运行模型，该 yaml 文件参考了 [MLP](https://github.com/microsoft/qlib/blob/main/examples/benchmarks/MLP/workflow_config_mlp_Alpha158.yaml)。
+运行模型，该 yaml 文件参考了 RNN 的测试代码。
 
 GTX 1050 Ti 的显存大小不足以运行该 CNN 模型代码，需要使用更高显存的 GPU。
 
