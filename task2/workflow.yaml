@@ -56,11 +56,11 @@ task:
             lr_decay: 0.96
             lr_decay_steps: 100
             optimizer: adam
-            max_steps: 8000
+            max_steps: 4000
             batch_size: 8196
             GPU: 0
             weight_decay: 0.0002
-            loss_type: binary
+            loss_type: mse
     dataset:
         class: DatasetH
         module_path: qlib.data.dataset

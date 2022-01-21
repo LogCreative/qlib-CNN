@@ -236,9 +236,25 @@ class CNNModelPytorch(Model):
 
     def get_loss(self, pred, w, target, loss_type):
         if loss_type == "mse":
-            sqr_loss = torch.mul(pred - target, pred - target)
-            loss = torch.mul(sqr_loss, w).mean()
-            return loss
+            # try to cut down the size of input
+            # to reduce the need on memory.
+            SIZE = pred.size()[1]
+            EVAL_BATCH_SIZE = int(SIZE / 4)
+            delta = pred - target
+            delta = delta.transpose(0,1)
+            w = w.transpose(0,1)
+            # FIXME: the prediction is not the correct size!
+            self.logger.info(pred.size())   # [1,65552]
+            self.logger.info(target.size()) # [8196,1]
+            self.logger.info(w.size())      # [1,8196]
+            losses = torch.zeros(SIZE)
+            for begin in range(0, SIZE, EVAL_BATCH_SIZE):
+                end = begin + EVAL_BATCH_SIZE
+                if end <= SIZE:
+                    losses[begin:end] = torch.mul(delta[begin:end]**2,w[begin:end])
+                else:
+                    losses[begin:] = torch.mul(delta[begin:]**2, w[begin:])
+            return losses.mean()
         elif loss_type == "binary":
             loss = nn.BCELoss(weight=w)
             return loss(pred, target)
