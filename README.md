@@ -24,9 +24,10 @@ python task1/workflow_by_code.py
 
 使用
 ```cmd
-qrun task2/workflow.yaml
+qrun task2/workflow_config_cnn_Alpha158.yaml
+qrun task2/workflow_config_cnn_Alpha360.yaml
 ```
-运行模型，该 yaml 文件参考了 RNN 的测试代码。
+运行模型。
 
 使用含有 RTX 3080 Ti 的服务器上运行该模型，结果如下：
 
