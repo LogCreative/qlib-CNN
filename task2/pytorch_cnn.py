@@ -22,7 +22,7 @@ class CNNModelPytorch(Model):
         self,
         input_dim=360,
         output_dim=1,
-        layer_num=1,
+        layers=(256,64,1),
         kernel_size=3,
         lr=0.001,
         max_steps=300,
@@ -43,7 +43,7 @@ class CNNModelPytorch(Model):
         self.logger.info("CNN pytorch version...")
 
         # set hyper-parameters.
-        self.layer_num = layer_num
+        self.layers = layers
         self.kernel_size = kernel_size
         self.lr = lr
         self.max_steps = max_steps
@@ -60,7 +60,7 @@ class CNNModelPytorch(Model):
 
         self.logger.info(
             "CNN parameters setting:"
-            "\nlayer_num : {}"
+            "\nlayers : {}"
             "\nkernel_size: {}"
             "\nlr : {}"
             "\nmax_steps : {}"
@@ -76,7 +76,7 @@ class CNNModelPytorch(Model):
             "\ndevice : {}"
             "\nuse_GPU : {}"
             "\nweight_decay : {}".format(
-                layer_num,
+                layers,
                 kernel_size,
                 lr,
                 max_steps,
@@ -103,7 +103,7 @@ class CNNModelPytorch(Model):
             raise NotImplementedError("loss {} is not supported!".format(loss))
         self._scorer = mean_squared_error if loss == "mse" else roc_auc_score
 
-        self.cnn_model = Net(input_dim, output_dim, kernel_size, layer_num)
+        self.cnn_model = Net(input_dim, output_dim, kernel_size, layers)
         self.logger.info("model:\n{:}".format(self.cnn_model))
         self.logger.info("model size: {:.4f} MB".format(count_parameters(self.cnn_model)))
 
@@ -297,14 +297,15 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 class Net(nn.Module):
-    def __init__(self, input_dim, output_dim, kernel_size, layer_num):
+    def __init__(self, input_dim, output_dim, kernel_size, layers=(256,64,1)):
         super(Net, self).__init__()
+        layers = [input_dim] + list(layers)
         cnn_layers = []
-        for i in range(layer_num):
-            conv = nn.Conv1d(input_dim, output_dim, kernel_size, 1, int((kernel_size-1)/2))
-            cnn_layers.append(conv)
-            relu = nn.ReLU()
-            cnn_layers.append(relu)
+        for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
+            conv = nn.Conv1d(input_channel, output_channel, kernel_size, 1, int((kernel_size-1)/2))
+            activation = nn.ReLU(inplace=False)
+            seq = nn.Sequential(conv, activation)
+            cnn_layers.append(seq)
         drop_input = nn.Dropout(0.05)
         cnn_layers.append(drop_input)
         softmax = nn.Softmax(output_dim)
