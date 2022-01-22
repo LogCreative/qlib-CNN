@@ -16,7 +16,7 @@ python task1/workflow_by_code.py
 
 ![](img/oldcnn.png)
 
-但是对于一维卷积网络来讲，这里仅使用一层作为演示。更好的优化需要使用 TCN 模型做多层卷积。
+但是对于一维卷积网络来讲，删去了 Pooling 层，并采用 padding 的方式保证数据维度一致。更好的优化需要使用 TCN 模型做多层卷积，使用因果卷积 Chomp1d。
 
 首先需要运行 [数据获取](task2/get_data.ipynb) 的代码。
 
