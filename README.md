@@ -16,6 +16,8 @@ python task1/workflow_by_code.py
 
 ![](img/oldcnn.png)
 
+但是对于一维卷积网络来讲，这里仅使用一层作为演示。更好的优化需要使用 TCN 模型做多层卷积。
+
 首先需要运行 [数据获取](task2/get_data.ipynb) 的代码。
 
 [代码](task2/pytorch_cnn.py) 为 CNN 的实现情况，层由 `layers` 定义。运行时需要将其移入 qlib 包的 `qlib/contrib/model/` 中，训练框架参考 [pytorch_nn](https://github.com/microsoft/qlib/blob/main/qlib/contrib/model/pytorch_nn.py)。
@@ -26,7 +28,9 @@ qrun task2/workflow.yaml
 ```
 运行模型，该 yaml 文件参考了 RNN 的测试代码。
 
-GTX 1050 Ti 的显存大小不足以运行该 CNN 模型代码，需要使用更高显存的 GPU。
+使用含有 RTX 3080 Ti 的服务器上运行该模型，结果如下：
+
+![](img/run_CNN.png)
 
 ### 分析
 

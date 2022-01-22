@@ -190,7 +190,6 @@ class CNNModelPytorch(Model):
             w_batch_auto = w_train_values[choice].to(self.device)
 
             # forward
-            self.logger.info(x_batch_auto.size())
             preds = self.cnn_model(x_batch_auto)
             cur_loss = self.get_loss(preds, w_batch_auto, y_batch_auto, self.loss_type)
             cur_loss.backward()
@@ -242,7 +241,6 @@ class CNNModelPytorch(Model):
     def get_loss(self, pred, w, target, loss_type):
         if loss_type == "mse":
             delta = pred - target
-            self.logger.info(delta.size())
             sqr_loss = delta ** 2
             loss = torch.mul(sqr_loss, w).mean()
             return loss
@@ -303,18 +301,10 @@ class Net(nn.Module):
         super(Net, self).__init__()
         layers = [input_dim] + list(layers)
         cnn_layers = []
-        # for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
-        #     conv = nn.Conv1d(input_channel, output_channel, 3)
-        #     activation = nn.ReLU(inplace=False)
-        #     pool = nn.MaxPool1d(2)
-        #     seq = nn.Sequential(conv, activation, pool)
-        #     cnn_layers.append(seq)
         conv = nn.Conv1d(input_dim, output_dim, kernel_size, 1, int((kernel_size-1)/2))
         cnn_layers.append(conv)
         relu = nn.ReLU()
         cnn_layers.append(relu)
-        # flat = nn.Flatten()
-        # cnn_layers.append(flat)
         drop_input = nn.Dropout(0.05)
         cnn_layers.append(drop_input)
         softmax = nn.Softmax(output_dim)
@@ -328,23 +318,3 @@ class Net(nn.Module):
             cur_output = now_layer(cur_output)
         cur_output = cur_output.squeeze().unsqueeze(1)
         return cur_output
-
-# class TCNModel(nn.Module):
-#     def __init__(self, num_input, output_size, num_channels, kernel_size, dropout):
-#         super().__init__()
-#         self.num_input = num_input
-#         # the kernel size should be an odd number.
-#         self.cnn = nn.Conv1d(num_input, output_size, kernel_size, 1, int((kernel_size - 1)/2))
-#         self.relu = nn.ReLU()
-#         self.cnn = nn.Conv1d(num_input, output_size, kernel_size, 1, int((kernel_size - 1)/2))
-#         self.relu = nn.ReLU()
-#         self.dropout = nn.Dropout(dropout)
-#         self.softmax = nn.Softmax(output_size)
-
-#     def forward(self, x):
-#         x = x.reshape(x.shape[0], self.num_input, -1)
-#         output = self.cnn(x)
-#         output = self.relu(output)
-#         output = self.dropout(output)
-#         output = self.softmax(output)
-#         return output.squeeze()
