@@ -50,8 +50,9 @@ task:
         module_path: qlib.contrib.model.pytorch_cnn
         kwargs:
             loss: mse
-            input_dim: 360
+            input_dim: 158
             output_dim: 1
+            layers: [64,16,1]
             kernel_size: 3
             lr: 0.002
             lr_decay: 0.96
@@ -67,7 +68,7 @@ task:
         module_path: qlib.data.dataset
         kwargs:
             handler:
-                class: Alpha360
+                class: Alpha158
                 module_path: qlib.contrib.data.handler
                 kwargs: *data_handler_config
             segments:
