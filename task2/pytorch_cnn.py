@@ -304,6 +304,7 @@ class Net(nn.Module):
         for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
             conv = nn.Conv1d(input_channel, output_channel, kernel_size, 1, int((kernel_size-1)/2))
             activation = nn.ReLU(inplace=False)
+            conv.weight.data.normal_(0, 0.01)   # init weight
             seq = nn.Sequential(conv, activation)
             cnn_layers.append(seq)
         drop_input = nn.Dropout(0.05)
