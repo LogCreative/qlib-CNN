@@ -23,6 +23,7 @@ class CNNModelPytorch(Model):
         input_dim=360,
         output_dim=1,
         layers=(16,),
+        kernel_size=3,
         lr=0.001,
         max_steps=300,
         batch_size=2000,
@@ -43,6 +44,7 @@ class CNNModelPytorch(Model):
 
         # set hyper-parameters.
         self.layers = layers
+        self.kernel_size = kernel_size
         self.lr = lr
         self.max_steps = max_steps
         self.batch_size = batch_size
@@ -59,6 +61,7 @@ class CNNModelPytorch(Model):
         self.logger.info(
             "CNN parameters setting:"
             "\nlayers : {}"
+            "\nkernel_size: {}"
             "\nlr : {}"
             "\nmax_steps : {}"
             "\nbatch_size : {}"
@@ -74,6 +77,7 @@ class CNNModelPytorch(Model):
             "\nuse_GPU : {}"
             "\nweight_decay : {}".format(
                 layers,
+                kernel_size,
                 lr,
                 max_steps,
                 batch_size,
@@ -99,7 +103,7 @@ class CNNModelPytorch(Model):
             raise NotImplementedError("loss {} is not supported!".format(loss))
         self._scorer = mean_squared_error if loss == "mse" else roc_auc_score
 
-        self.cnn_model = Net(input_dim, output_dim, layers)
+        self.cnn_model = Net(input_dim, output_dim, kernel_size, layers)
         self.logger.info("model:\n{:}".format(self.cnn_model))
         self.logger.info("model size: {:.4f} MB".format(count_parameters(self.cnn_model)))
 
@@ -186,6 +190,7 @@ class CNNModelPytorch(Model):
             w_batch_auto = w_train_values[choice].to(self.device)
 
             # forward
+            self.logger.info(x_batch_auto.size())
             preds = self.cnn_model(x_batch_auto)
             cur_loss = self.get_loss(preds, w_batch_auto, y_batch_auto, self.loss_type)
             cur_loss.backward()
@@ -236,25 +241,11 @@ class CNNModelPytorch(Model):
 
     def get_loss(self, pred, w, target, loss_type):
         if loss_type == "mse":
-            # try to cut down the size of input
-            # to reduce the need on memory.
-            SIZE = pred.size()[1]
-            EVAL_BATCH_SIZE = int(SIZE / 4)
             delta = pred - target
-            delta = delta.transpose(0,1)
-            w = w.transpose(0,1)
-            # FIXME: the prediction is not the correct size!
-            self.logger.info(pred.size())   # [1,65552]
-            self.logger.info(target.size()) # [8196,1]
-            self.logger.info(w.size())      # [1,8196]
-            losses = torch.zeros(SIZE)
-            for begin in range(0, SIZE, EVAL_BATCH_SIZE):
-                end = begin + EVAL_BATCH_SIZE
-                if end <= SIZE:
-                    losses[begin:end] = torch.mul(delta[begin:end]**2,w[begin:end])
-                else:
-                    losses[begin:] = torch.mul(delta[begin:]**2, w[begin:])
-            return losses.mean()
+            self.logger.info(delta.size())
+            sqr_loss = delta ** 2
+            loss = torch.mul(sqr_loss, w).mean()
+            return loss
         elif loss_type == "binary":
             loss = nn.BCELoss(weight=w)
             return loss(pred, target)
@@ -308,18 +299,22 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 class Net(nn.Module):
-    def __init__(self, input_dim, output_dim, layers=(256,)):
+    def __init__(self, input_dim, output_dim, kernel_size, layers=(256,)):
         super(Net, self).__init__()
         layers = [input_dim] + list(layers)
         cnn_layers = []
-        for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
-            conv = nn.Conv1d(input_channel, output_channel, 3)
-            activation = nn.ReLU(inplace=False)
-            pool = nn.MaxPool1d(2)
-            seq = nn.Sequential(conv, activation, pool)
-            cnn_layers.append(seq)
-        flat = nn.Flatten()
-        cnn_layers.append(flat)
+        # for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
+        #     conv = nn.Conv1d(input_channel, output_channel, 3)
+        #     activation = nn.ReLU(inplace=False)
+        #     pool = nn.MaxPool1d(2)
+        #     seq = nn.Sequential(conv, activation, pool)
+        #     cnn_layers.append(seq)
+        conv = nn.Conv1d(input_dim, output_dim, kernel_size, 1, int((kernel_size-1)/2))
+        cnn_layers.append(conv)
+        relu = nn.ReLU()
+        cnn_layers.append(relu)
+        # flat = nn.Flatten()
+        # cnn_layers.append(flat)
         drop_input = nn.Dropout(0.05)
         cnn_layers.append(drop_input)
         softmax = nn.Softmax(output_dim)
@@ -331,4 +326,25 @@ class Net(nn.Module):
         cur_output = x.transpose(0,1).unsqueeze(0)
         for i, now_layer in enumerate(self.cnn_layers):
             cur_output = now_layer(cur_output)
+        cur_output = cur_output.squeeze().unsqueeze(1)
         return cur_output
+
+# class TCNModel(nn.Module):
+#     def __init__(self, num_input, output_size, num_channels, kernel_size, dropout):
+#         super().__init__()
+#         self.num_input = num_input
+#         # the kernel size should be an odd number.
+#         self.cnn = nn.Conv1d(num_input, output_size, kernel_size, 1, int((kernel_size - 1)/2))
+#         self.relu = nn.ReLU()
+#         self.cnn = nn.Conv1d(num_input, output_size, kernel_size, 1, int((kernel_size - 1)/2))
+#         self.relu = nn.ReLU()
+#         self.dropout = nn.Dropout(dropout)
+#         self.softmax = nn.Softmax(output_size)
+
+#     def forward(self, x):
+#         x = x.reshape(x.shape[0], self.num_input, -1)
+#         output = self.cnn(x)
+#         output = self.relu(output)
+#         output = self.dropout(output)
+#         output = self.softmax(output)
+#         return output.squeeze()
