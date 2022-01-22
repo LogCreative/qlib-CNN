@@ -52,6 +52,7 @@ task:
             loss: mse
             input_dim: 360
             output_dim: 1
+            layer_num: 3
             kernel_size: 3
             lr: 0.002
             lr_decay: 0.96
