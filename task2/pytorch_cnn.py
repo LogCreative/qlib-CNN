@@ -17,14 +17,12 @@ from sklearn.metrics import roc_auc_score, mean_squared_error
 from qlib.workflow import R
 
 # reference to qlib/qlib/contrib/pytorch_nn.py
-
-
 class CNNModelPytorch(Model):
     def __init__(
         self,
         input_dim=360,
         output_dim=1,
-        layers=(256, 64, 1),
+        layers=(256,64,16),
         kernel_size=3,
         lr=0.001,
         max_steps=300,
@@ -56,8 +54,7 @@ class CNNModelPytorch(Model):
         self.lr_decay_steps = lr_decay_steps
         self.optimizer = optimizer.lower()
         self.loss_type = loss
-        self.device = torch.device("cuda:%d" % (
-            GPU) if torch.cuda.is_available() and GPU >= 0 else "cpu")
+        self.device = torch.device("cuda:%d" % (GPU) if torch.cuda.is_available() and GPU >= 0 else "cpu")
         self.seed = seed
         self.weight_decay = weight_decay
 
@@ -108,18 +105,14 @@ class CNNModelPytorch(Model):
 
         self.cnn_model = Net(input_dim, output_dim, kernel_size, layers)
         self.logger.info("model:\n{:}".format(self.cnn_model))
-        self.logger.info("model size: {:.4f} MB".format(
-            count_parameters(self.cnn_model)))
+        self.logger.info("model size: {:.4f} MB".format(count_parameters(self.cnn_model)))
 
         if optimizer.lower() == "adam":
-            self.train_optimizer = optim.Adam(
-                self.cnn_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+            self.train_optimizer = optim.Adam(self.cnn_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         elif optimizer.lower() == "gd":
-            self.train_optimizer = optim.SGD(
-                self.cnn_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+            self.train_optimizer = optim.SGD(self.cnn_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         else:
-            raise NotImplementedError(
-                "optimizer {} is not supported!".format(optimizer))
+            raise NotImplementedError("optimizer {} is not supported!".format(optimizer))
 
         # Reduce learning rate when loss has stopped decrease
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -153,19 +146,15 @@ class CNNModelPytorch(Model):
             ["train", "valid"], col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
         )
         if df_train.empty or df_valid.empty:
-            raise ValueError(
-                "Empty data from dataset, please check your dataset config.")
+            raise ValueError("Empty data from dataset, please check your dataset config.")
         x_train, y_train = df_train['feature'], df_train['label']
         x_valid, y_valid = df_valid['feature'], df_valid['label']
         try:
-            wdf_train, wdf_valid = dataset.prepare(["train", "valid"], col_set=[
-                                                   "weight"], data_key=DataHandlerLP.DK_L)
+            wdf_train, wdf_valid = dataset.prepare(["train", "valid"], col_set=["weight"], data_key=DataHandlerLP.DK_L)
             w_train, w_valid = wdf_train["weight"], wdf_valid["weight"]
         except KeyError as e:
-            w_train = pd.DataFrame(np.ones_like(
-                y_train.values), index=y_train.index)
-            w_valid = pd.DataFrame(np.ones_like(
-                y_valid.values), index=y_valid.index)
+            w_train = pd.DataFrame(np.ones_like(y_train.values), index=y_train.index)
+            w_valid = pd.DataFrame(np.ones_like(y_valid.values), index=y_valid.index)
 
         save_path = get_or_create_path(save_path)
         stop_steps = 0
@@ -202,8 +191,7 @@ class CNNModelPytorch(Model):
 
             # forward
             preds = self.cnn_model(x_batch_auto)
-            cur_loss = self.get_loss(
-                preds, w_batch_auto, y_batch_auto, self.loss_type)
+            cur_loss = self.get_loss(preds, w_batch_auto, y_batch_auto, self.loss_type)
             cur_loss.backward()
             self.train_optimizer.step()
             loss.update(cur_loss.item())
@@ -222,14 +210,12 @@ class CNNModelPytorch(Model):
 
                     # forward
                     preds = self.cnn_model(x_val_auto)
-                    cur_loss_val = self.get_loss(
-                        preds, w_val_auto, y_val_auto, self.loss_type)
+                    cur_loss_val = self.get_loss(preds, w_val_auto, y_val_auto, self.loss_type)
                     loss_val.update(cur_loss_val.item())
                 R.log_metrics(val_loss=loss_val.val, step=step)
                 if verbose:
                     self.logger.info(
-                        "[Epoch {}]: train_loss {:.6f}, valid_loss {:.6f}".format(
-                            step, train_loss, loss_val.val)
+                        "[Epoch {}]: train_loss {:.6f}, valid_loss {:.6f}".format(step, train_loss, loss_val.val)
                     )
                 evals_result["train"].append(train_loss)
                 evals_result["valid"].append(loss_val.val)
@@ -262,14 +248,12 @@ class CNNModelPytorch(Model):
             loss = nn.BCELoss(weight=w)
             return loss(pred, target)
         else:
-            raise NotImplementedError(
-                "loss {} is not supported!".format(loss_type))
+            raise NotImplementedError("loss {} is not supported!".format(loss_type))
 
     def predict(self, dataset: DatasetH, segment: Union[Text, slice] = "test"):
         if not self.fitted:
             raise ValueError("model is not fitted yet!")
-        x_test_pd = dataset.prepare(
-            segment, col_set="feature", data_key=DataHandlerLP.DK_I)
+        x_test_pd = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
         x_test = torch.from_numpy(x_test_pd.values).float().to(self.device)
         self.cnn_model.eval()
         with torch.no_grad():
@@ -312,29 +296,29 @@ class AverageMeter:
         self.count += n
         self.avg = self.sum / self.count
 
-
 class Net(nn.Module):
-    def __init__(self, input_dim, output_dim, kernel_size, layers=(256, 64, 1)):
+    def __init__(self, input_dim, output_dim, kernel_size, layers=(256,64,16)):
         super(Net, self).__init__()
         layers = [input_dim] + list(layers)
         cnn_layers = []
-        for i, (input_channel, output_channel) in enumerate(zip(layers[:-1], layers[1:])):
-            conv = nn.Conv1d(input_channel, output_channel,
-                             kernel_size, 1, int((kernel_size-1)/2))
+        for i, (input_channel, output_channel) in enumerate(zip(layers[:-1],layers[1:])):
+            conv = nn.Conv1d(input_channel, output_channel, kernel_size, 1, int((kernel_size-1)/2))
             activation = nn.ReLU(inplace=False)
             conv.weight.data.normal_(0, 0.01)   # init weight
             seq = nn.Sequential(conv, activation)
             cnn_layers.append(seq)
         drop_input = nn.Dropout(0.05)
         cnn_layers.append(drop_input)
-        softmax = nn.Softmax(output_dim)
-        cnn_layers.append(softmax)
+        # softmax = nn.Softmax(output_dim)
+        # cnn_layers.append(softmax)
         self.cnn_layers = nn.ModuleList(cnn_layers)
+        self.linear = nn.Linear(layers[-1],output_dim)
 
     def forward(self, x):
         # [2000,20] -> batch_size, in_channels, length = [1,20,2000]
-        cur_output = x.transpose(0, 1).unsqueeze(0)
+        cur_output = x.transpose(0,1).unsqueeze(0)
         for i, now_layer in enumerate(self.cnn_layers):
             cur_output = now_layer(cur_output)
-        cur_output = cur_output.squeeze().unsqueeze(1)
+        cur_output = self.linear(cur_output[:,:,-1])
+        cur_output = cur_output.squeeze().unsqueeze(0)
         return cur_output

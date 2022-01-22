@@ -52,7 +52,7 @@ task:
             loss: mse
             input_dim: 158
             output_dim: 1
-            layers: [64,16,1]
+            layers: [64,16,4]
             kernel_size: 3
             lr: 0.002
             lr_decay: 0.96
